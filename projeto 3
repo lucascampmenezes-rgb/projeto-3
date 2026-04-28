@@ -1,0 +1,316 @@
+import csv
+import os
+from collections import deque
+from datetime import datetime
+
+# =========================
+# MODELO
+# =========================
+
+class Jogo:
+    def __init__(self, id, titulo, console, genero, publisher, nota, ano):
+        self.id = id
+        self.titulo = titulo
+        self.console = console
+        self.genero = genero
+        self.publisher = publisher
+        self.nota = float(nota)
+        self.ano = int(ano)
+        self.tempo_total = 0
+        self.status = "nao_iniciado"
+
+    def __str__(self):
+        return f"[{self.id}] {self.titulo} | {self.console} | {self.genero} | Nota: {self.nota} | Tempo: {self.tempo_total}h"
+
+
+# =========================
+# ESTRUTURAS
+# =========================
+
+class FilaBacklog:
+    def __init__(self):
+        self.fila = deque()
+
+    def adicionar(self, jogo):
+        self.fila.append(jogo)
+
+    def remover(self):
+        return self.fila.popleft() if self.fila else None
+
+    def mostrar(self):
+        print("\n=== BACKLOG ===")
+        for j in self.fila:
+            print(j)
+
+
+class PilhaRecentes:
+    def __init__(self):
+        self.lista = []
+
+    def adicionar(self, jogo):
+        self.lista.append(jogo)
+
+    def ultimo(self):
+        return self.lista[-1] if self.lista else None
+
+    def mostrar(self):
+        print("\n=== RECENTES ===")
+        for j in reversed(self.lista):
+            print(j)
+
+
+# =========================
+# SISTEMA
+# =========================
+
+class SteamPy:
+    def __init__(self):
+        self.catalogo = []
+        self.backlog = FilaBacklog()
+        self.recentes = PilhaRecentes()
+        self.historico = []
+
+        self.carregar_catalogo("games.csv")
+        self.carregar_backlog()
+        self.carregar_historico()
+
+    # =========================
+    # CARREGAMENTO (COM AUTO CRIAÇÃO)
+    # =========================
+
+    def carregar_catalogo(self, arquivo):
+        if not os.path.exists(arquivo):
+            print("Arquivo não encontrado. Criando catálogo padrão...")
+
+            with open(arquivo, "w", newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(["id","titulo","console","genero","publisher","nota","ano"])
+                writer.writerows([
+                    ["1","The Witcher 3","PC","RPG","CD Projekt","9.8","2015"],
+                    ["2","GTA V","PC","Ação","Rockstar","9.7","2013"],
+                    ["3","FIFA 23","PS5","Esporte","EA","8.5","2022"],
+                    ["4","Minecraft","PC","Sandbox","Mojang","9.5","2011"],
+                    ["5","God of War","PS4","Ação","Sony","9.6","2018"],
+                    ["6","Forza Horizon 5","Xbox","Corrida","Microsoft","9.2","2021"],
+                    ["7","Zelda BOTW","Switch","Aventura","Nintendo","9.9","2017"]
+                ])
+
+        with open(arquivo, newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                self.catalogo.append(Jogo(
+                    row["id"], row["titulo"], row["console"],
+                    row["genero"], row["publisher"],
+                    row["nota"], row["ano"]
+                ))
+
+        print("Catálogo carregado!")
+
+    def carregar_backlog(self):
+        if os.path.exists("backlog.txt"):
+            with open("backlog.txt") as f:
+                for linha in f:
+                    jogo = self.buscar_por_id(linha.strip())
+                    if jogo:
+                        self.backlog.adicionar(jogo)
+
+    def salvar_backlog(self):
+        with open("backlog.txt", "w") as f:
+            for j in self.backlog.fila:
+                f.write(j.id + "\n")
+
+    def carregar_historico(self):
+        if os.path.exists("historico_jogo.txt"):
+            with open("historico_jogo.txt") as f:
+                for linha in f:
+                    titulo, tempo, total, status, data = linha.strip().split(";")
+                    self.historico.append({
+                        "titulo": titulo,
+                        "tempo": float(tempo),
+                        "tempo_total": float(total),
+                        "status": status,
+                        "data": data
+                    })
+
+    def salvar_historico(self, registro):
+        with open("historico_jogo.txt", "a") as f:
+            f.write(f'{registro["titulo"]};{registro["tempo"]};{registro["tempo_total"]};{registro["status"]};{registro["data"]}\n')
+
+    # =========================
+    # CATÁLOGO
+    # =========================
+
+    def listar(self):
+        for j in self.catalogo:
+            print(j)
+
+    def buscar_por_id(self, id):
+        for j in self.catalogo:
+            if j.id == id:
+                return j
+        return None
+
+    # =========================
+    # JOGAR
+    # =========================
+
+    def jogar(self, jogo):
+        horas = float(input("Horas jogadas: "))
+
+        jogo.tempo_total += horas
+
+        if jogo.tempo_total < 2:
+            jogo.status = "iniciado"
+        elif jogo.tempo_total < 10:
+            jogo.status = "em_andamento"
+        else:
+            jogo.status = "concluido"
+
+        self.recentes.adicionar(jogo)
+
+        registro = {
+            "titulo": jogo.titulo,
+            "tempo": horas,
+            "tempo_total": jogo.tempo_total,
+            "status": jogo.status,
+            "data": datetime.now().strftime("%d/%m/%Y")
+        }
+
+        self.historico.append(registro)
+        self.salvar_historico(registro)
+
+        print(f"Jogando {jogo.titulo} ({jogo.status})")
+
+    def jogar_direto(self):
+        id = input("ID: ")
+        jogo = self.buscar_por_id(id)
+        if jogo:
+            self.jogar(jogo)
+
+    def jogar_backlog(self):
+        jogo = self.backlog.remover()
+        if jogo:
+            self.jogar(jogo)
+
+    # =========================
+    # BACKLOG
+    # =========================
+
+    def adicionar_backlog(self):
+        id = input("ID: ")
+        jogo = self.buscar_por_id(id)
+        if jogo:
+            self.backlog.adicionar(jogo)
+            self.salvar_backlog()
+            print("Adicionado ao backlog.")
+
+    # =========================
+    # HISTÓRICO
+    # =========================
+
+    def ver_historico(self):
+        for h in self.historico:
+            print(h)
+
+    # =========================
+    # RECOMENDAÇÃO
+    # =========================
+
+    def recomendar(self):
+        generos = {}
+        consoles = {}
+
+        for h in self.historico:
+            jogo = next((j for j in self.catalogo if j.titulo == h["titulo"]), None)
+            if jogo:
+                generos[jogo.genero] = generos.get(jogo.genero, 0) + 1
+                consoles[jogo.console] = consoles.get(jogo.console, 0) + 1
+
+        if not generos:
+            print("Sem dados suficientes.")
+            return
+
+        g = max(generos, key=generos.get)
+        c = max(consoles, key=consoles.get)
+
+        print(f"Gênero favorito: {g}")
+        print(f"Console favorito: {c}")
+        print("Sugestões:")
+
+        for j in self.catalogo:
+            if j.genero == g and j.console == c and j.tempo_total == 0:
+                print(j)
+
+    # =========================
+    # RANKING
+    # =========================
+
+    def ranking(self):
+        print("\nMais jogados:")
+        for j in sorted(self.catalogo, key=lambda x: x.tempo_total, reverse=True)[:5]:
+            print(j)
+
+    # =========================
+    # DASHBOARD
+    # =========================
+
+    def dashboard(self):
+        total_jogos = len(self.catalogo)
+        total_backlog = len(self.backlog.fila)
+        total_sessoes = len(self.historico)
+        tempo_total = sum(j.tempo_total for j in self.catalogo)
+
+        mais_jogado = max(self.catalogo, key=lambda x: x.tempo_total)
+
+        print("\n=== DASHBOARD ===")
+        print("Jogos:", total_jogos)
+        print("Backlog:", total_backlog)
+        print("Sessões:", total_sessoes)
+        print("Tempo total:", tempo_total)
+        print("Mais jogado:", mais_jogado.titulo)
+
+
+# =========================
+# MENU
+# =========================
+
+def menu():
+    s = SteamPy()
+
+    while True:
+        print("\n===== MENU =====")
+        print("1 Listar")
+        print("2 Jogar direto")
+        print("3 Jogar backlog")
+        print("4 Adicionar backlog")
+        print("5 Ver backlog")
+        print("6 Histórico")
+        print("7 Recomendar")
+        print("8 Ranking")
+        print("9 Dashboard")
+        print("10 Sair")
+
+        op = input("Opção: ")
+
+        if op == "1":
+            s.listar()
+        elif op == "2":
+            s.jogar_direto()
+        elif op == "3":
+            s.jogar_backlog()
+        elif op == "4":
+            s.adicionar_backlog()
+        elif op == "5":
+            s.backlog.mostrar()
+        elif op == "6":
+            s.ver_historico()
+        elif op == "7":
+            s.recomendar()
+        elif op == "8":
+            s.ranking()
+        elif op == "9":
+            s.dashboard()
+        elif op == "10":
+            break
+
+menu()
